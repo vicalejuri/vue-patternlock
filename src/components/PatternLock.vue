@@ -1,11 +1,21 @@
 <template>
-  <div class="patternlock" @pointerdown="start" @pointerup="end" @pointermove="draw">
+  <div class="patternlock" @pointerdown="touchdown" @pointerup="touchup" @pointermove="touchmove">
     <div class="patternlock__container" ref="container">
       <div class="quadrant debug" v-for="point in points" :key="point.uid">
-        <button class="point" :aria-toggled="point.checked"/>
+        <button
+          class="point"
+          :aria-toggled="point.checked"
+          @pointerover="(ev) => markPin(ev,point)"
+        />
       </div>
       <svg class="line-container" viewBox="0 0 1 1">
-        <path ref="path" :d="linePath" fill="none" stroke="blue" stroke-width="0.01"></path>
+        <path
+          ref="path"
+          :d="linePath"
+          fill="none"
+          :stroke="strokeColor"
+          :stroke-width="strokeWidth"
+        ></path>
       </svg>
     </div>
   </div>
@@ -19,23 +29,38 @@ import { fnv1a } from '@/utils'
 import shortid from 'shortid'
 
 import Point, { Vector } from './Point'
-import Edge from './Edge.vue'
+import Edge from './Edge'
+
+const PRECISION = 2
 
 @Component
 export default class PatternLock extends Vue {
   public name = 'pattern-lock'
 
+  /**
+   * A seed used to make pattern-lock guessing via rainbow tables harder.
+   * @important
+   */
   @Prop({ default: 'SEED_CHANGE_ME_TO_USERNAME_OR_OTHER_SECRET' })
   private seed!: string
 
-  private points: Point[] = []
-  private edges: Edge[] = []
+  @Prop({ default: 0.01 })
+  private strokeWidth!: number
 
-  private lastActivePoint: Vector = [0, 0]
+  @Prop({ default: 'blue' })
+  private strokeColor!: string
+
+  // all points
+  private points: Point[] = []
+
+  // Edges are 2 connected points, used to create a strong password
+  private edges: Edge[] = []
+  private lastMarkedPoint: Point | null = null
+
+  // Line Path
   private line: Vector[] = []
 
   private containerRect!: ClientRect
-
   private isPointerdown: boolean = false
 
   public constructor() {
@@ -57,15 +82,22 @@ export default class PatternLock extends Vue {
   }
 
   private vectorToStr(v: Vector): string {
-    return v[0] + ' ' + v[1]
+    return v[0].toFixed(PRECISION) + ' ' + v[1].toFixed(PRECISION)
   }
 
+  private addEdge(p1: Point, p2: Point): void {
+    this.edges.push(new Edge(p1, p2))
+  }
+
+  /**
+   * SVG linepath
+   */
   private get linePath() {
     if (this.line.length >= 1) {
       let firstPoint = this.line[0]
-      // move to (start)
+      // move to (start point)
       return `M ${this.vectorToStr(firstPoint)}` +
-        // line to (each point in path)
+        // draw line foreach(point in path)
         (this.line.slice(1).map((l: Vector) => ` L ${this.vectorToStr(l)}`))
         // Finish
         + ''
@@ -95,7 +127,7 @@ export default class PatternLock extends Vue {
   /**
    * Pattern drawing handling
    */
-  private start(ev: PointerEvent) {
+  private touchdown(ev: PointerEvent) {
     let posScreen: Vector = [ev.clientX, ev.clientY];
     let posLocal: Vector = this.screenPositionNormalized(posScreen)
 
@@ -103,7 +135,10 @@ export default class PatternLock extends Vue {
     this.isPointerdown = true
   }
 
-  private draw(ev: PointerEvent) {
+  /**
+   * Draw line last segment
+   */
+  private touchmove(ev: PointerEvent) {
     if (!this.isPointerdown) { return }
 
     let posScreen: Vector = [ev.clientX, ev.clientY];
@@ -113,7 +148,35 @@ export default class PatternLock extends Vue {
     Vue.set(this.line, lastIdx, posLocal);
   }
 
-  private end(ev: PointerEvent) {
+  /**
+   * Mark a pin 
+   */
+  private markPin(ev: PointerEvent, point: Point) {
+    // Avoid marking Pin twice
+    if (!this.isPointerdown) { return; }
+    if (point.checked) { return }
+
+    // Set point marked
+    point.checked = true
+
+    // Get position of point in screen
+    let posScreen: Vector = [ev.clientX, ev.clientY];
+    let posLocal: Vector = this.screenPositionNormalized(posScreen)
+    point.pos = posLocal
+
+    // Add point to svg path
+    this.line = [...this.line, point.pos]
+
+    // Already have previous pin marked? 
+    // Create a new edge
+    if (this.lastMarkedPoint !== null) {
+      this.addEdge(this.lastMarkedPoint, point)
+    } else {
+      this.lastMarkedPoint = point
+    }
+  }
+
+  private touchup(ev: PointerEvent) {
     this.line = []
     this.isPointerdown = false
   }
@@ -131,6 +194,7 @@ export default class PatternLock extends Vue {
   display: flex;
   padding: var(--padding);
   background-color: var(--background);
+  user-select: none;
 
   &__container {
     position: relative;
@@ -144,6 +208,7 @@ export default class PatternLock extends Vue {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: none;
 
     &.debug {
       outline: 1px dashed #bbbbbb;
@@ -168,6 +233,7 @@ export default class PatternLock extends Vue {
     width: 100%;
     height: 100%;
     overflow: visible;
+    pointer-events: none;
   }
 }
 </style>

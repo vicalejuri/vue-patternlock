@@ -1,6 +1,3 @@
-<template></template>
-
-<script lang='ts'>
 import { hash } from '@/utils'
 
 import Point from './Point'
@@ -22,7 +19,3 @@ export default class Edge {
     return hash(this.a.toString() + this.b.toString())
   }
 }
-</script>
-
-<style>
-</style>

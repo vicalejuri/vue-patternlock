@@ -5,8 +5,8 @@ export type Vector = [
 
 export default class Point {
   public checked: boolean = false
+  public pos: Vector = [0, 0]
   private uid!: string
-  private pos: Vector = [0, 0]
 
   public constructor(uid: string) {
     this.uid = uid
