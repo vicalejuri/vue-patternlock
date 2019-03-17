@@ -177,6 +177,9 @@ export default class PatternLock extends Vue {
   }
 
   private touchup(ev: PointerEvent) {
+    // Clear all points
+    this.points.forEach((p) => p.reset())
+
     this.line = []
     this.isPointerdown = false
   }

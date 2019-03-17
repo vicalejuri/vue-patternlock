@@ -14,6 +14,7 @@ export default class Point {
 
   public reset() {
     this.checked = false
+    this.pos = [0, 0]
   }
 
   public toString() { return this.uid }
