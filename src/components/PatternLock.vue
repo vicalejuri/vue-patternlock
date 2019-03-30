@@ -2,11 +2,9 @@
   <div class="patternlock" @pointerdown="touchdown" @pointerup="touchup" @pointermove="touchmove">
     <div class="patternlock__container" ref="container">
       <div class="quadrant debug" v-for="point in points" :key="point.uid">
-        <button
-          class="point"
-          :aria-toggled="point.checked"
-          @pointerover="(ev) => markPin(ev,point)"
-        />
+        <div class="hitbox-point" @pointerover="(ev) => markPin(ev, point)">
+          <button class="point" :aria-toggled="point.checked"/>
+        </div>
       </div>
       <svg class="line-container" viewBox="0 0 1 1">
         <path
@@ -50,6 +48,9 @@ export default class PatternLock extends Vue {
   @Prop({ default: 'blue' })
   private strokeColor!: string
 
+  @Prop({ default: 6 })
+  private maxMovements!: number
+
   // all points
   private points: Point[] = []
 
@@ -89,12 +90,17 @@ export default class PatternLock extends Vue {
     this.edges.push(new Edge(p1, p2))
   }
 
+  private generatePatternHash(): void {
+    const hash = '1234567891022234123'
+    this.$emit('pattern', hash)
+  }
+
   /**
    * SVG linepath
    */
   private get linePath() {
     if (this.line.length >= 1) {
-      let firstPoint = this.line[0]
+      const firstPoint = this.line[0]
       // move to (start point)
       return `M ${this.vectorToStr(firstPoint)}` +
         // draw line foreach(point in path)
@@ -117,9 +123,9 @@ export default class PatternLock extends Vue {
    */
   private screenPositionNormalized(screenPos: Vector): Vector {
 
-    let posNormal: Vector = this.screenPositionToLocal(screenPos)
-    let normX = posNormal[0] / this.containerRect.width
-    let normY = posNormal[1] / this.containerRect.height
+    const posNormal: Vector = this.screenPositionToLocal(screenPos)
+    const normX = posNormal[0] / this.containerRect.width
+    const normY = posNormal[1] / this.containerRect.height
 
     return [normX, normY]
   }
@@ -128,8 +134,8 @@ export default class PatternLock extends Vue {
    * Pattern drawing handling
    */
   private touchdown(ev: PointerEvent) {
-    let posScreen: Vector = [ev.clientX, ev.clientY];
-    let posLocal: Vector = this.screenPositionNormalized(posScreen)
+    const posScreen: Vector = [ev.clientX, ev.clientY];
+    const posLocal: Vector = this.screenPositionNormalized(posScreen)
 
     this.line = [posLocal, posLocal]
     this.isPointerdown = true
@@ -141,8 +147,8 @@ export default class PatternLock extends Vue {
   private touchmove(ev: PointerEvent) {
     if (!this.isPointerdown) { return }
 
-    let posScreen: Vector = [ev.clientX, ev.clientY];
-    let posLocal: Vector = this.screenPositionNormalized(posScreen)
+    const posScreen: Vector = [ev.clientX, ev.clientY];
+    const posLocal: Vector = this.screenPositionNormalized(posScreen)
 
     const lastIdx = this.line.length - 1
     Vue.set(this.line, lastIdx, posLocal);
@@ -160,8 +166,8 @@ export default class PatternLock extends Vue {
     point.checked = true
 
     // Get position of point in screen
-    let posScreen: Vector = [ev.clientX, ev.clientY];
-    let posLocal: Vector = this.screenPositionNormalized(posScreen)
+    const posScreen: Vector = [ev.clientX, ev.clientY];
+    const posLocal: Vector = this.screenPositionNormalized(posScreen)
     point.pos = posLocal
 
     // Add point to svg path
@@ -174,6 +180,13 @@ export default class PatternLock extends Vue {
     } else {
       this.lastMarkedPoint = point
     }
+
+    // If already has sufficient movements, generate HashPasword
+    if (this.line.length >= this.maxMovements) {
+      this.generatePatternHash()
+      this.touchup(new PointerEvent('touchup'))
+    }
+
   }
 
   private touchup(ev: PointerEvent) {
@@ -183,7 +196,10 @@ export default class PatternLock extends Vue {
     this.line = []
     this.isPointerdown = false
   }
+
+
 }
+
 </script>
 
 <style lang="scss">
@@ -218,6 +234,17 @@ export default class PatternLock extends Vue {
     }
   }
 
+  .hitbox-point {
+    width: 1rem;
+    height: 1rem;
+    background-color: transparent;
+    padding: 0;
+    border: 0;
+    border: 1px solid red;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .point {
     padding: 0;
     border: 0;

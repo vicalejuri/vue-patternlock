@@ -1,8 +1,9 @@
 <template>
   <div class="hello">
     <h1>{{ msg }}</h1>
+    <pre>{{ pattern }}</pre>
     <section class="password">
-      <PatternLock class="pattern-lock"></PatternLock>
+      <PatternLock class="pattern-lock" @pattern="showPattern"></PatternLock>
     </section>
   </div>
 </template>
@@ -17,6 +18,14 @@ export default Vue.extend({
   props: {
     msg: String,
   },
+  data() {
+    return { pattern: '' }
+  },
+  methods: {
+    showPattern(pattern: string) {
+      this.pattern = pattern
+    }
+  }
 });
 </script>
 
