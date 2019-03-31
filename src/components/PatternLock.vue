@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="patternlock"
+		:class="style"
 		@pointerenter="calculateBounds"
 		@pointerdown.passive="touchdown"
 		@pointerup.passive="touchup"
@@ -9,7 +9,7 @@
 		<div class="patternlock__debug" ref="debug"></div>
 		<div class="patternlock__container" ref="container">
 			<div class="quadrant debug" v-for="point in points" :key="point.uid">
-				<div class="hitbox-point" @pointerover.self.passive="(ev) => markPin(ev, point)">
+				<div class="hitbox-point" @pointerenter.self.passive="(ev) => markPin(ev, point)">
 					<button class="point" :aria-toggled="point.checked"/>
 				</div>
 			</div>
@@ -23,38 +23,56 @@
 <script lang="ts">
 import Vue from "vue";
 import { Component, Prop } from "vue-property-decorator";
-import { fnv1a } from "@/utils";
 
-import shortid from "shortid";
-import { svg, html } from "lighterhtml";
+import MersenneTwister from "mersenne-twister";
 
-import Point, { Vector } from "./Point";
-import Edge from "./Edge";
+import { fnv1a, hashDigest, str2Uint32 } from "@/utils";
+import Point, { Vector } from "@/core/Point";
+import Edge from "@/core/Edge";
 
-const PRECISION = 2;
+const PRECISION = 3;
+
+/**
+ * Status for success, error and blank pattern.
+ * Use this to customize style of pattern lock based on success/error
+ */
+export enum PatternStatus {
+	empty = "pattern-empty",
+	success = "pattern-success",
+	error = "pattern-error"
+}
 
 @Component
 export default class PatternLock extends Vue {
 	public name = "pattern-lock";
 
 	/**
-	 * A seed used to make pattern-lock guessing via rainbow tables harder.
+	 * A KEY used to make pattern-lock guessing via rainbow tables much harder.
+	 * It will also be used as HMAC key, to sign the pattern digest.
+	 *  A use case, is using the same KEY only 5 times, and when exceeded, you
+	 *  can make user wait to create a new key.
 	 * @important
 	 */
-	@Prop({ default: "SEED_CHANGE_ME_TO_USERNAME_OR_OTHER_SECRET" })
-	private seed!: string;
+	@Prop()
+	private hmackey!: string;
+
+	@Prop({ default: PatternStatus.empty })
+	public status!: PatternStatus;
 
 	@Prop({ default: 0.01 })
 	private strokeWidth!: number;
 
-	@Prop({ default: "blue" })
+	@Prop({ default: "white" })
 	private strokeColor!: string;
 
 	@Prop({ default: 6 })
 	private maxMovements!: number;
 
+	private seed: number;
+	private pseudorandom: MersenneTwister;
+
 	// all points
-	private points: Point[] = [];
+	public points: Point[] = [];
 
 	// Edges are 2 connected points, used to create a strong password
 	private edges: Edge[] = [];
@@ -70,11 +88,14 @@ export default class PatternLock extends Vue {
 	public constructor() {
 		super();
 
-		// Seed shortid before creating values for points
-		shortid.seed(fnv1a(this.seed));
+		// Use key as a seed to create reproducible points hash
+		this.seed = str2Uint32(this.hmackey);
+		this.pseudorandom = new MersenneTwister(this.seed);
 
 		for (let i = 0; i < 9; i++) {
-			this.points.push(new Point(shortid.generate()));
+			const uid = this.pseudorandom.random_int();
+			this.points.push(new Point(uid));
+			console.log(this.points[i].valueOf());
 		}
 	}
 
@@ -86,12 +107,12 @@ export default class PatternLock extends Vue {
 		// Retrieve points position after mount
 	}
 
+	public get style(): string {
+		return ["patternlock", this.status].join(" ");
+	}
+
 	private vectorToStr(v: Vector): string {
-		return (
-			v[0] + //.toFixed(PRECISION)
-			" " +
-			v[1] //.toFixed(PRECISION)
-		);
+		return v[0].toFixed(PRECISION) + " " + v[1].toFixed(PRECISION);
 	}
 
 	private addEdge(p1: Point, p2: Point): void {
@@ -99,8 +120,15 @@ export default class PatternLock extends Vue {
 	}
 
 	private generatePatternHash(): void {
-		const hash = "1234567891022234123";
-		this.$emit("pattern", hash);
+		// Sum all edges, and transform to string of minimum 16 characters
+		const passnumber = this.edges
+			.map(e1 => e1.valueOf())
+			.reduce((a, b) => (a + b) % Number.MAX_SAFE_INTEGER)
+			.toString()
+			.padEnd(16, Math.round(this.seed).toString());
+
+		const hash = hashDigest(passnumber);
+		this.$emit("drawComplete", hash);
 	}
 
 	private calculateBounds(ev: PointerEvent) {
@@ -175,59 +203,72 @@ export default class PatternLock extends Vue {
 	}
 
 	private touchup(ev: PointerEvent) {
-		console.log("touchup");
-
+		console.log("touchup reset");
 		// Clear all points
 		this.points.forEach(p => p.reset());
 
 		this.line = [];
 		this.isPointerdown = false;
+		this.lastMarkedPoint = null;
 	}
 
 	/**
 	 * Mark a pin
 	 */
-	private markPin(ev: PointerEvent, point: Point) {
-		// Avoid marking Pin twice
+	public markPin(ev: PointerEvent, point: Point) {
 		if (!this.isPointerdown) {
 			return;
 		}
+		// Avoid marking Pin twice
 		if (point.checked) {
 			return;
+		} else {
+			point.checked = true;
 		}
 
-		// Set point marked
-		point.checked = true;
+		// Get touch position
+		const touchLocal: Vector = this.screenPositionToLocal([
+			ev.clientX,
+			ev.clientY
+		]);
 
 		// Get position of point in screen
 		const targetPos = (ev.target as HTMLElement).getBoundingClientRect();
-		console.log(ev.target);
 		const posScreen: Vector = [
 			targetPos.left + targetPos.width / 2,
 			targetPos.top + targetPos.height / 2
 		];
 		const posLocal: Vector = this.screenPositionNormalized(posScreen);
+		// Set position of point in normalized coordinates
 		point.pos = posLocal;
-
-		// Add point to svg path
-		const lastIdx = this.line.length - 1;
-		Vue.set(this.line, lastIdx, posLocal);
-		this.line = [...this.line, posLocal];
+		this.lastMarkedPoint = point;
 
 		// Already have previous pin marked?
 		// Create a new edge
 		if (this.lastMarkedPoint !== null) {
+			// Set end point to posLocal, and create a new startPoint
+			const lastIdx = this.line.length - 1;
+			Vue.set(this.line, lastIdx, posLocal);
+			this.line = [...this.line, posLocal];
+
 			this.addEdge(this.lastMarkedPoint, point);
 		} else {
-			this.lastMarkedPoint = new Point("I");
-			this.lastMarkedPoint.pos = posScreen;
+			// Create a new line from this point
+			this.line = [posLocal, touchLocal];
 		}
 
 		// If already has sufficient movements, generate HashPasword
-		if (this.line.length >= this.maxMovements + 1) {
+		console.log("lines length", this.line.length);
+		if (this.line.length == this.maxMovements + 1) {
 			this.generatePatternHash();
 			this.edges = [];
-			// this.touchup(new PointerEvent('touchup'))
+
+			// Clear all points
+			this.points.forEach(p => p.reset());
+			this.line = [];
+			this.lastMarkedPoint = null;
+
+			//this.touchup(new PointerEvent("touchup"));
 
 			// Regenerate bounds, container may be changed location
 			this.calculateBounds(new PointerEvent("touchenter"));

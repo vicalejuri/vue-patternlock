@@ -1,10 +1,6 @@
 <template>
 	<div class="hello">
 		<h1>{{ msg }}</h1>
-		<section class="password">
-			<PatternLock @drawComplete="showPassword" hmackey="THANK YOU VERY MUCH"></PatternLock>
-		</section>
-		<pre>{{ pattern }}</pre>
 	</div>
 </template>
 
@@ -20,11 +16,6 @@ export default Vue.extend({
 	},
 	data() {
 		return { pattern: "" };
-	},
-	methods: {
-		showPassword(pattern: string) {
-			this.pattern = pattern;
-		}
 	}
 });
 </script>

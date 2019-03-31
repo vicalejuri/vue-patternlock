@@ -9,8 +9,8 @@ export default class Point {
   public checked: boolean
   public pos: Vector
 
-  private uid!: string
-  public constructor(uid: string) {
+  private uid!: number
+  public constructor(uid: number) {
     this.uid = uid
     this.pos = [0, 0]
     this.checked = false
@@ -21,5 +21,6 @@ export default class Point {
     this.pos = [0, 0]
   }
 
-  public toString() { return this.uid.toString().toLowerCase() }
+// tslint:disable-next-line: no-bitwise
+  public valueOf() { return this.uid >>> 0 }
 }

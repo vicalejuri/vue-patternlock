@@ -13,6 +13,17 @@ export const pipe = (...fns: any[]) => compose(...fns.reverse());
 declare const Buffer: any;
 export function Uint2hex(x: Uint8Array) { return (new Buffer(x).toString('hex')) }
 
+/** Convert js String to a UINT32 number */
+export function str2Uint32(x: string) : number {
+  // tslint:disable: no-bitwise
+  return x.split("")
+    .map(a => a.charCodeAt(0))
+    .reduce((a, b) => (a * b) ^ (b ** 1 / b) % Number.MAX_SAFE_INTEGER) 
+
+    // Hack to convert to UINT32
+    >>> 0;
+}
+
 /** Convert JS string to an Raw Array of UInt8 (ASCII|Unicode) */
 function str2Uint8(x: string): Uint8Array {
   return Uint8Array.from(

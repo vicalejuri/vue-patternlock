@@ -1,17 +1,17 @@
 <template>
   <div class="home">
-    <HelloWorld msg="Plase login"/>
+    <HelloWorld2 msg="Plase login"/>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from 'vue';
-import HelloWorld from '@/components/HelloWorld.vue'; // @ is an alias to /src
+import HelloWorld2 from '@/components/HelloWorld.vue'; // @ is an alias to /src
 
 export default Vue.extend({
   name: 'home',
   components: {
-    HelloWorld,
+    HelloWorld2,
   },
 });
 </script>
