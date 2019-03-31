@@ -3,11 +3,13 @@ export type Vector = [
   number
 ]
 
+export interface IVector extends Array<Vector> { }
+
 export default class Point {
   public checked: boolean
   public pos: Vector
-  private uid!: string
 
+  private uid!: string
   public constructor(uid: string) {
     this.uid = uid
     this.pos = [0, 0]

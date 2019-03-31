@@ -27,9 +27,10 @@ export const digest = Uint2hex;
 export const hash = pipe(str2Uint8, sha256)
 export const hashDigest = pipe(hash, digest)
 
-const FNV_PRIME = 16777619;
-const OFFSET = 2166136261;
-
+// Fast hash and checksum
+// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+const FNV_PRIME = 1099511628211;
+const FNV_OFFSET = 14695981039346656037 ;
 export function fnv1a(x: string) {
   return (
     x
@@ -41,9 +42,7 @@ export function fnv1a(x: string) {
       .reduce((a: number, b: number) => {
         // tslint:disable-next-line: no-bitwise
         return ((b ^ a) * FNV_PRIME) % Number.MAX_SAFE_INTEGER;
-      }, OFFSET)
+      }, FNV_OFFSET)
 
-    // Convert to unsigned 32 int
-    >>> 0
   );
 }
