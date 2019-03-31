@@ -4,12 +4,14 @@ export type Vector = [
 ]
 
 export default class Point {
-  public checked: boolean = false
-  public pos: Vector = [0, 0]
+  public checked: boolean
+  public pos: Vector
   private uid!: string
 
   public constructor(uid: string) {
     this.uid = uid
+    this.pos = [0, 0]
+    this.checked = false
   }
 
   public reset() {
@@ -17,5 +19,5 @@ export default class Point {
     this.pos = [0, 0]
   }
 
-  public toString() { return this.uid }
+  public toString() { return this.uid.toString().toLowerCase() }
 }

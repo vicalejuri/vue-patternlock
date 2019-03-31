@@ -9,8 +9,10 @@
     "test:unit": "vue-cli-service test:unit"
   },
   "dependencies": {
+    "@types/hyperscript": "^0.0.3",
     "@types/shortid": "^0.0.29",
     "fast-sha256": "^1.1.0",
+    "hyperscript": "^2.0.2",
     "register-service-worker": "^1.6.2",
     "shortid": "^2.2.14",
     "vue": "^2.6.6",

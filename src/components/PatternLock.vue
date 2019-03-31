@@ -1,8 +1,17 @@
 <template>
-  <div class="patternlock" @pointerdown="touchdown" @pointerup="touchup" @pointermove="touchmove">
+  <div
+    class="patternlock"
+    @pointerenter="calculateBounds"
+    @pointerdown.passive="touchdown"
+    @pointerup.passive="touchup"
+    @pointermove.passive="touchmove"
+  >
+    <div class="patternlock__debug" ref="debug">
+      <div class="cursor" :style="cursorPosition"></div>
+    </div>
     <div class="patternlock__container" ref="container">
       <div class="quadrant debug" v-for="point in points" :key="point.uid">
-        <div class="hitbox-point" @pointerover="(ev) => markPin(ev, point)">
+        <div class="hitbox-point" @pointerover.self.passive="(ev) => markPin(ev, point)">
           <button class="point" :aria-toggled="point.checked"/>
         </div>
       </div>
@@ -25,6 +34,7 @@ import { Component, Prop } from 'vue-property-decorator'
 import { fnv1a } from '@/utils'
 
 import shortid from 'shortid'
+import h from 'hyperscript'
 
 import Point, { Vector } from './Point'
 import Edge from './Edge'
@@ -56,10 +66,12 @@ export default class PatternLock extends Vue {
 
   // Edges are 2 connected points, used to create a strong password
   private edges: Edge[] = []
-  private lastMarkedPoint: Point | null = null
+  private lastMarkedPoint: Point = new Point('I')
 
   // Line Path
   private line: Vector[] = []
+
+  private cursor: Vector = [0, 0]
 
   private containerRect!: ClientRect
   private isPointerdown: boolean = false
@@ -95,6 +107,11 @@ export default class PatternLock extends Vue {
     this.$emit('pattern', hash)
   }
 
+  private calculateBounds(ev: PointerEvent) {
+    // Retrieve container size in screen space
+    this.containerRect = (this.$refs.container as HTMLElement).getBoundingClientRect()
+  }
+
   /**
    * SVG linepath
    */
@@ -108,6 +125,13 @@ export default class PatternLock extends Vue {
         // Finish
         + ''
     }
+  }
+
+  /**
+   * Cursor
+   */
+  private get cursorPosition() {
+    return `left: ${this.cursor[0]}px; top: ${this.cursor[1]}px;`
   }
 
   /**
@@ -145,14 +169,29 @@ export default class PatternLock extends Vue {
    * Draw line last segment
    */
   private touchmove(ev: PointerEvent) {
-    if (!this.isPointerdown) { return }
 
     const posScreen: Vector = [ev.clientX, ev.clientY];
+    const posRelative: Vector = this.screenPositionToLocal(posScreen)
     const posLocal: Vector = this.screenPositionNormalized(posScreen)
+
+    this.cursor = posRelative
+
+    if (!this.isPointerdown) { return }
 
     const lastIdx = this.line.length - 1
     Vue.set(this.line, lastIdx, posLocal);
   }
+
+  private touchup(ev: PointerEvent) {
+    console.log("touchup", )
+
+    // Clear all points
+    this.points.forEach((p) => p.reset())
+
+    this.line = []
+    this.isPointerdown = false
+  }
+
 
   /**
    * Mark a pin 
@@ -166,9 +205,14 @@ export default class PatternLock extends Vue {
     point.checked = true
 
     // Get position of point in screen
-    const posScreen: Vector = [ev.clientX, ev.clientY];
+    const targetPos = (ev.target as HTMLElement).getBoundingClientRect()
+    const posScreen: Vector = [targetPos.left + targetPos.width / 2, targetPos.top + targetPos.height / 2];
     const posLocal: Vector = this.screenPositionNormalized(posScreen)
     point.pos = posLocal
+
+    const posRelative = this.screenPositionToLocal(posScreen)
+
+    this.debugPixel(...posRelative)
 
     // Add point to svg path
     this.line = [...this.line, point.pos]
@@ -178,25 +222,27 @@ export default class PatternLock extends Vue {
     if (this.lastMarkedPoint !== null) {
       this.addEdge(this.lastMarkedPoint, point)
     } else {
-      this.lastMarkedPoint = point
+      this.lastMarkedPoint.pos = posLocal
     }
 
     // If already has sufficient movements, generate HashPasword
-    if (this.line.length >= this.maxMovements) {
+    if (this.line.length >= this.maxMovements + 1) {
       this.generatePatternHash()
-      this.touchup(new PointerEvent('touchup'))
+      this.edges = []
+      //this.touchup(new PointerEvent('touchup'))
+
+      // Regenerate bounds, container may be changed location
+      this.calculateBounds(new PointerEvent('touchenter'))
     }
 
   }
 
-  private touchup(ev: PointerEvent) {
-    // Clear all points
-    this.points.forEach((p) => p.reset())
+  private debugPixel(x: number, y: number) {
+    let point: HTMLDivElement = h('div', { style: { 'position': 'absolute', 'top': y + 'px', 'left': x + 'px', 'width': '2px', 'height': '2px', 'background-color': '#0000ff' } }) as HTMLDivElement
 
-    this.line = []
-    this.isPointerdown = false
+
+    (this.$refs.debug as HTMLElement).appendChild(point)
   }
-
 
 }
 
@@ -223,11 +269,26 @@ export default class PatternLock extends Vue {
     grid-template-columns: 1fr 1fr 1fr;
   }
 
+  &__debug {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 255, 0, 0.3);
+
+    & .cursor {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background-color: tomato;
+    }
+  }
+
   .quadrant {
     display: flex;
     align-items: center;
     justify-content: center;
     touch-action: none;
+    z-index: 1;
 
     &.debug {
       outline: 1px dashed #bbbbbb;
