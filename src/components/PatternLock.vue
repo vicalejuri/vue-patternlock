@@ -26,7 +26,7 @@ import { Component, Prop } from "vue-property-decorator";
 
 import MersenneTwister from "mersenne-twister";
 
-import { fnv1a, hashDigest, str2Uint32 } from "@/utils";
+import { fnv1a, tap, hashDigest, str2Uint32 } from "@/utils";
 import Point, { Vector } from "@/core/Point";
 import Edge from "@/core/Edge";
 
@@ -53,11 +53,14 @@ export default class PatternLock extends Vue {
 	 *  can make user wait to create a new key.
 	 * @important
 	 */
-	@Prop()
-	private hmackey!: string;
+	// all points
+	public points: Point[] = [];
 
 	@Prop({ default: PatternStatus.empty })
 	public status!: PatternStatus;
+
+	@Prop()
+	private hmackey!: string;
 
 	@Prop({ default: 0.01 })
 	private strokeWidth!: number;
@@ -71,11 +74,9 @@ export default class PatternLock extends Vue {
 	private seed: number;
 	private pseudorandom: MersenneTwister;
 
-	// all points
-	public points: Point[] = [];
-
 	// Edges are 2 connected points, used to create a strong password
 	private edges: Edge[] = [];
+	private previousMarkedPoint: Point | null = null;
 	private lastMarkedPoint: Point | null = null;
 
 	// Line Path
@@ -95,7 +96,6 @@ export default class PatternLock extends Vue {
 		for (let i = 0; i < 9; i++) {
 			const uid = this.pseudorandom.random_int();
 			this.points.push(new Point(uid));
-			console.log(this.points[i].valueOf());
 		}
 	}
 
@@ -111,24 +111,97 @@ export default class PatternLock extends Vue {
 		return ["patternlock", this.status].join(" ");
 	}
 
+	/**
+	 * Mark a pin
+	 */
+	public markPin(ev: PointerEvent, point: Point) {
+		if (!this.isPointerdown) {
+			return;
+		}
+		// Avoid marking Pin twice
+		if (point.checked) {
+			return;
+		} else {
+			point.checked = true;
+		}
+
+		// Get touch position
+		const touchLocal: Vector = this.screenPositionToLocal([
+			ev.clientX,
+			ev.clientY
+		]);
+
+		// Get position of point in screen
+		const targetPos = (ev.target as HTMLElement).getBoundingClientRect();
+		const posScreen: Vector = [
+			targetPos.left + targetPos.width / 2,
+			targetPos.top + targetPos.height / 2
+		];
+		const posLocal: Vector = this.screenPositionNormalized(posScreen);
+
+		// Set position of point in normalized coordinates
+		point.pos = posLocal;
+
+		// Already have previous pin marked?
+		// Create a new edge
+		if (this.lastMarkedPoint !== null) {
+			// Set end point to posLocal, and create a new startPoint
+			const lastIdx = this.line.length - 1;
+			Vue.set(this.line, lastIdx, posLocal);
+			this.line = [...this.line, posLocal];
+
+			// Clone lastMarkedPoint
+			this.addEdge(this.lastMarkedPoint, point);
+		} else {
+			// Create a new line from this point
+			this.line = [posLocal, touchLocal];
+		}
+
+		// Walk points forward{}
+		if (this.previousMarkedPoint === null) {
+			this.previousMarkedPoint = point;
+		} else {
+			this.previousMarkedPoint = this.lastMarkedPoint;
+			this.lastMarkedPoint = point;
+		}
+
+		// If already has sufficient movements, generate HashPasword
+		console.log("lines length", this.line.length);
+		if (this.line.length === this.maxMovements + 1) {
+			this.generatePatternHash().then(hash => {
+				this.$emit("drawComplete", hash);
+
+				// Clear old points and edges
+				this.clear();
+
+				// Regenerate bounds, container may be changed location
+				this.calculateBounds(new PointerEvent("touchenter"));
+			});
+		}
+	}
+
 	private vectorToStr(v: Vector): string {
 		return v[0].toFixed(PRECISION) + " " + v[1].toFixed(PRECISION);
 	}
 
 	private addEdge(p1: Point, p2: Point): void {
+		console.log(p1 + " -> " + p2);
 		this.edges.push(new Edge(p1, p2));
 	}
 
-	private generatePatternHash(): void {
+	private generatePatternHash(): Promise<string> {
 		// Sum all edges, and transform to string of minimum 16 characters
 		const passnumber = this.edges
+			.map(tap(console.log))
 			.map(e1 => e1.valueOf())
+			.map(tap(console.log))
 			.reduce((a, b) => (a + b) % Number.MAX_SAFE_INTEGER)
-			.toString()
-			.padEnd(16, Math.round(this.seed).toString());
+			.toString();
 
-		const hash = hashDigest(passnumber);
-		this.$emit("drawComplete", hash);
+		return new Promise<string>((resolve, reject) => {
+			const hash = hashDigest(passnumber);
+			resolve(hash);
+		});
 	}
 
 	private calculateBounds(ev: PointerEvent) {
@@ -198,81 +271,24 @@ export default class PatternLock extends Vue {
 			return;
 		}
 
+		// Set last point of line to current mouse position
 		const lastIdx = this.line.length - 1;
 		Vue.set(this.line, lastIdx, posLocal);
 	}
 
 	private touchup(ev: PointerEvent) {
-		console.log("touchup reset");
-		// Clear all points
+		this.clear();
+	}
+
+	private clear() {
+		// Clear all points and edges
+		this.edges = [];
 		this.points.forEach(p => p.reset());
 
 		this.line = [];
 		this.isPointerdown = false;
 		this.lastMarkedPoint = null;
-	}
-
-	/**
-	 * Mark a pin
-	 */
-	public markPin(ev: PointerEvent, point: Point) {
-		if (!this.isPointerdown) {
-			return;
-		}
-		// Avoid marking Pin twice
-		if (point.checked) {
-			return;
-		} else {
-			point.checked = true;
-		}
-
-		// Get touch position
-		const touchLocal: Vector = this.screenPositionToLocal([
-			ev.clientX,
-			ev.clientY
-		]);
-
-		// Get position of point in screen
-		const targetPos = (ev.target as HTMLElement).getBoundingClientRect();
-		const posScreen: Vector = [
-			targetPos.left + targetPos.width / 2,
-			targetPos.top + targetPos.height / 2
-		];
-		const posLocal: Vector = this.screenPositionNormalized(posScreen);
-		// Set position of point in normalized coordinates
-		point.pos = posLocal;
-		this.lastMarkedPoint = point;
-
-		// Already have previous pin marked?
-		// Create a new edge
-		if (this.lastMarkedPoint !== null) {
-			// Set end point to posLocal, and create a new startPoint
-			const lastIdx = this.line.length - 1;
-			Vue.set(this.line, lastIdx, posLocal);
-			this.line = [...this.line, posLocal];
-
-			this.addEdge(this.lastMarkedPoint, point);
-		} else {
-			// Create a new line from this point
-			this.line = [posLocal, touchLocal];
-		}
-
-		// If already has sufficient movements, generate HashPasword
-		console.log("lines length", this.line.length);
-		if (this.line.length == this.maxMovements + 1) {
-			this.generatePatternHash();
-			this.edges = [];
-
-			// Clear all points
-			this.points.forEach(p => p.reset());
-			this.line = [];
-			this.lastMarkedPoint = null;
-
-			//this.touchup(new PointerEvent("touchup"));
-
-			// Regenerate bounds, container may be changed location
-			this.calculateBounds(new PointerEvent("touchenter"));
-		}
+		this.previousMarkedPoint = null;
 	}
 }
 </script>

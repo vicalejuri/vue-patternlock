@@ -4,6 +4,12 @@ declare module '*.vue' {
 }
 
 declare module 'lighterhtml' {
-  export function svg(chunks: TemplateStringsArray, ...interpolations: any[]) : SVGElement
-  export function html(chunks: TemplateStringsArray, ...interpolations: any[]) : HTMLElement
+  export function svg (chunks: TemplateStringsArray, ...interpolations: any[]): SVGElement
+  export function html (chunks: TemplateStringsArray, ...interpolations: any[]): HTMLElement
+}
+
+declare module global {
+  interface Array {
+    tap: (this: Array, tapFn: any) => any
+  }
 }
